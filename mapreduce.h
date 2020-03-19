@@ -15,7 +15,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
-#include <string.h>
+#include <string>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -39,16 +39,26 @@ struct kvpair;
  * Function signature for application-provided Map functions.
  * A Map function will read input provided by the framework through kv, process it, and call mr_produce
  * for each key-value pair it outputs.
+ * Returns 0 if the operation was completed successfuly and -1 if there was
+ * an error.
+ *
  */
-typedef int (*map_fn)(struct map_reduce *mr, struct kvpair *kv);
+int map(struct map_reduce *mr, struct kvpair *kv);
 
 /**
  * Function signature for application-provided Reduce functions.  A Reduce function
  * will receive key-value pairs from the mr_consume function through kvset , combine them, and write the result to a buffer.
  * The num parameter informs the Reduce function how many valid key-value pairs are
  * passed through the kvset buffer.
+ *
+ * num 	Indicates the number of kvpairs present in the buffer passed to the function.
+ *		If the num is given as 0, then the reduce function calls mr_output to produce the output file.
+ *
+ * Returns 0 if the operation was completed successfuly and -1 if there was
+ * an error.
+ *
  */
-typedef int (*reduce_fn)(struct map_reduce *mr, struct kvpair *kvset, size_t num);
+int reduce(struct map_reduce *mr, struct kvpair *kvset, size_t num);
 
 
 /*
@@ -59,9 +69,10 @@ typedef int (*reduce_fn)(struct map_reduce *mr, struct kvpair *kvset, size_t num
  * The contents of this structure are the ONLY part of the mapreduce.h file that
  * you may change!
  *
- * This type is treated as "opaque" by the application, which means the application may
- * not manipulate it in any way other than passing its pointer back to your
- * functions.
+ * The application will utilize one paramter from this struct. The member variable named
+ * 'genOutput', when set to non-zero value, will indicate to the application
+ *  that the output has to be generated now and the application will call mr_output.
+ *
  */
 struct map_reduce {
 };
@@ -94,18 +105,21 @@ struct kvpair {
  * function should allocate a map_reduce structure and any memory or resources
  * that may be needed by later functions. Also setups the input file on the HDFS.
  *
- * map        Pointer to map callback function
- * reduce     Pointer to reduce callback function
- * threads    Number of worker threads to use
- * inpath     Path to the file from which input is read.
+ * application 	Name of the application run by the framework {wordc, grep}
+ * map        	Pointer to map callback function
+ * reduce     	Pointer to reduce callback function
+ * threads    	Number of worker threads to use
+ * inpath     	Path to the file from which input is read.
  *      	    The framework should load that file onto the HDFS.
- * outpath    Path to the file to which output is written.
- * delimiters Used by the framework to generate tokenized input for the map_fn
+ * outpath    	Path to the file to which output is written.
+ * helper_args 	Used by the framework to generate tokenized input for the map_fn.
+ *				For wordc application, used to provide delimiters and for grep,
+ *				used to provide the search string.
  *
  * Returns a pointer to the newly allocated map_reduce structure on success, or
  * NULL to indicate failure.
  */
-struct map_reduce *mr_init(map_fn map, reduce_fn reduce, int threads, const char *inpath, const char *outpath, const char *delimiters);
+struct map_reduce *mr_init(const char *application, int threads, const char *inpath, const char *outpath, const char *helper_args);
 
 /**
  * Destroys and cleans up an existing instance of the MapReduce framework.  Any
@@ -182,12 +196,11 @@ int mr_consume(struct map_reduce *mr, struct kvpair *kvset, size_t *num, const i
  *
  * mr             Pointer to the MapReduce instance
  * writeBuffer    Output produced by the Reduce funtion to be stored on file.
- * 								Memory for this buffer will be allocated by the caller and needs to be cleaned up afterwards.
  * bufferLength   Size (in bytes) of the valid data in the buffer.
  *
  * Returns 0 if the key-value pairs were written to the file (success), -1 on
  * failure.
  */
-int mr_outout(struct map_reduce *mr, void *writeBuffer, size_t bufferLength);
+int mr_output(struct map_reduce *mr, char *writeBuffer, size_t bufferLength);
 
 #endif
